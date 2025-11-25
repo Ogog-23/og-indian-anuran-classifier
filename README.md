@@ -1,7 +1,3 @@
-Absolutely — here is a clean, professional **README.md** written specifically for your submission, based on everything we built and fixed together.
-You can **copy-paste directly** into your GitHub and ZIP submission. ✨
-
----
 
 # 🐸 FrogCallsAI — Bush Frog Species Classifier & Live Visualization
 
@@ -145,4 +141,5 @@ Project: Acoustic Indian Anuran Species Classifier
 
 If any setup issues occur:
 check Python terminal for errors → model shapes must match `TARGET_FRAMES = 374` (already set)
+
 
