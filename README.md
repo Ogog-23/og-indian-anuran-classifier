@@ -1,5 +1,5 @@
 
-# 🐸 FrogCallsAI — Bush Frog Species Classifier & Live Visualization
+# 🐸 FrogCallsAI: Real-time Frog Acoustic Species Detection & Visualization
 
 Real-time acoustic species detection for Western Ghats bush frogs using a CNN audio model + auxiliary features.
 Includes data preprocessing notebook, trained model, WebSocket inference API, and a radial D3 visualization.
@@ -141,4 +141,5 @@ Project: Acoustic Indian Anuran Species Classifier
 
 If any setup issues occur:
 check Python terminal for errors → model shapes must match `TARGET_FRAMES = 374` (already set)
+
 
