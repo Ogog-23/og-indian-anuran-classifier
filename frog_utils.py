@@ -64,7 +64,7 @@ def spectral_gate(y, sr=SR, n_fft=512, hop_length=256, prop_decrease=0.9):
 
 
 # NOTE: set this to the TARGET_FRAMES printed in the notebook.
-# For your current trained model it was 374; keep that unless you retrain.
+# For your current trained model it was 372; keep that unless you retrain.
 TARGET_FRAMES = 372
 
 
