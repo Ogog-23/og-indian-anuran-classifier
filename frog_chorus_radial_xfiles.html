@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Western Ghats Frog Chorus – X-Files Radial</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #020814;
+      color: #e5f5ff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    h1 {
+      margin-bottom: 0.3rem;
+      letter-spacing: 0.04em;
+    }
+    .subtitle {
+      opacity: 0.8;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      max-width: 880px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2.3fr);
+      gap: 24px;
+      align-items: stretch;
+    }
+    svg {
+      width: 100%;
+      height: 520px;
+      border-radius: 18px;
+      background: radial-gradient(circle at 30% 0%, #0a2038 0, #020814 65%);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
+    }
+    .panel {
+      border-radius: 18px;
+      background: #040c18;
+      box-shadow: 0 14px 35px rgba(0, 0, 0, 0.7);
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .panel h2 {
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.85;
+      margin: 0 0 6px;
+    }
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      opacity: 0.9;
+    }
+    .metric-label {
+      opacity: 0.7;
+    }
+    .metric-value {
+      font-variant-numeric: tabular-nums;
+    }
+    .species-list {
+      font-size: 0.83rem;
+      margin-top: 4px;
+    }
+    .species-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .species-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      flex-shrink: 0;
+    }
+    .species-name {
+      flex-grow: 1;
+    }
+    .species-bar {
+      height: 4px;
+      border-radius: 999px;
+      background: #0f253c;
+      overflow: hidden;
+      flex-basis: 45%;
+    }
+    .species-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+    }
+    .story {
+      font-size: 0.83rem;
+      line-height: 1.5;
+      opacity: 0.9;
+    }
+    .story-label {
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 0.7rem;
+      opacity: 0.7;
+      margin-bottom: 2px;
+    }
+    .story-main {
+      color: #b9d8ff;
+    }
+    .small-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      opacity: 0.6;
+    }
+    .mono {
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+  <h1>Western Ghats Frog Chorus – Radial Soundscape</h1>
+  <div class="subtitle">
+    Real-time predictions from your frog call model. Time wraps around the circle; each ring represents a species,
+    arcs show active presence, and pulsing dots mark individual windows. Glow encodes model confidence, while the panel
+    on the right summarises which frogs dominate this recording and how the acoustic profile evolves.
+  </div>
+
+  <div class="layout">
+    <!-- Left: radial main viz -->
+    <svg id="viz"></svg>
+
+    <!-- Right: summary panel -->
+    <section class="panel">
+      <h2>Frog Chorus Snapshot</h2>
+
+      <div class="metric-row">
+        <span class="metric-label">Windows processed</span>
+        <span class="metric-value mono" id="m-windows">0</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Current time in recording</span>
+        <span class="metric-value mono" id="m-time">0.0 s</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Mean confidence (last 60s)</span>
+        <span class="metric-value mono" id="m-conf">–</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Typical peak frequency</span>
+        <span class="metric-value mono" id="m-peak">–</span>
+      </div>
+
+      <div class="small-label" style="margin-top: 12px;">Species activity in this recording</div>
+      <div class="species-list" id="species-list">
+        <!-- filled by JS -->
+      </div>
+
+      <div style="margin-top: 10px;">
+        <div class="story-label">Chorus story</div>
+        <div class="story" id="story">
+          <span class="story-main">Waiting for server…</span>
+        </div>
+      </div>
+
+      <!-- Audio player for the test recording -->
+      <div style="margin-top: 16px;">
+        <div class="small-label">Recording playback</div>
+        <audio id="frog-audio" controls style="width: 100%; margin-top: 6px;">
+          <source src="test_frog_recording.wav" type="audio/wav">
+          Your browser does not support the audio element.
+        </audio>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ====== BASIC SETUP ======
+    const speciesOrder = ["Raven_amboli", "Raven_coorg", "Raven_knob"];
+
+    const speciesColor = d3.scaleOrdinal()
+      .domain(speciesOrder)
+      .range(["#46c7b1", "#a3de73", "#ffd66e"]);  // teal, green, amber
+
+    const svg = d3.select("#viz");
+    const width = 960;
+    const height = 520;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    svg.attr("viewBox", `0 0 ${width} ${height}`);
+    const gRoot = svg.append("g").attr("transform", `translate(${cx},${cy})`);
+
+    // glow & subtle grid
+    const defs = svg.append("defs");
+    const glow = defs.append("filter").attr("id", "glow");
+    glow.append("feGaussianBlur")
+      .attr("stdDeviation", 3)
+      .attr("result", "blur");
+    const feMerge = glow.append("feMerge");
+    feMerge.append("feMergeNode").attr("in", "blur");
+    feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+    // radii for rings (3 species)
+    const baseRadius = 90;
+    const ringGap = 42;
+    const speciesRadii = {
+      "Raven_amboli": { inner: baseRadius, outer: baseRadius + 18 },
+      "Raven_coorg":  { inner: baseRadius + ringGap, outer: baseRadius + ringGap + 18 },
+      "Raven_knob":   { inner: baseRadius + 2 * ringGap, outer: baseRadius + 2 * ringGap + 18 }
+    };
+
+    // background concentric circles + ticks
+    const grid = gRoot.append("g").attr("class", "grid");
+    [baseRadius - 25, baseRadius + ringGap - 10, baseRadius + 2 * ringGap + 5, baseRadius + 3 * ringGap + 25]
+      .forEach(r => {
+        grid.append("circle")
+          .attr("r", r)
+          .attr("fill", "none")
+          .attr("stroke", "#132338")
+          .attr("stroke-width", 0.6)
+          .attr("stroke-dasharray", "2,3");
+      });
+
+    const tickCount = 48;
+    const ticks = d3.range(tickCount).map(i => (2 * Math.PI * i) / tickCount);
+    const tickLayer = gRoot.append("g").attr("class", "ticks");
+    ticks.forEach(a => {
+      const r0 = baseRadius - 25;
+      const r1 = baseRadius + 3 * ringGap + 24;
+      tickLayer.append("line")
+        .attr("x1", Math.cos(a) * r0)
+        .attr("y1", Math.sin(a) * r0)
+        .attr("x2", Math.cos(a) * r1)
+        .attr("y2", Math.sin(a) * r1)
+        .attr("stroke", "#0b1724")
+        .attr("stroke-width", 0.6)
+        .attr("stroke-opacity", 0.4);
+    });
+
+    // central label
+    const centralText = gRoot.append("g")
+      .attr("text-anchor", "middle")
+      .attr("fill", "#b9d8ff")
+      .attr("font-size", 11);
+
+    centralText.append("text")
+      .attr("y", -6)
+      .attr("letter-spacing", "0.16em")
+      .attr("text-transform", "uppercase")
+      .attr("opacity", 0.7)
+      .text("Frog chorus");
+
+    const centralNow = centralText.append("text")
+      .attr("y", 10)
+      .attr("class", "mono")
+      .text("0.0 s");
+
+    const centralSpecies = centralText.append("text")
+      .attr("y", 28)
+      .attr("class", "mono")
+      .attr("fill", "#ffe69b")
+      .text("–");
+
+    // ====== DATA STATE ======
+    let segments = [];
+    const windowSize = 60; // seconds
+    const speciesSeconds = {};
+    const speciesPeakFreqs = {};
+    const speciesWindows = {};
+    speciesOrder.forEach(s => {
+      speciesSeconds[s] = 0;
+      speciesPeakFreqs[s] = [];
+      speciesWindows[s] = 0;
+    });
+
+    let windowsProcessed = 0;
+    let meanConfWindow = [];
+    let angleScale = d3.scaleLinear().range([0, 2 * Math.PI]); // time -> angle
+
+    const mWindowsEl = document.getElementById("m-windows");
+    const mTimeEl    = document.getElementById("m-time");
+    const mConfEl    = document.getElementById("m-conf");
+    const mPeakEl    = document.getElementById("m-peak");
+    const storyEl    = document.getElementById("story");
+    const speciesListEl = document.getElementById("species-list");
+
+    const audioEl = document.getElementById("frog-audio");
+    let audioStarted = false;
+
+    // ====== SUMMARY HELPERS ======
+    function updateAngleScale() {
+      if (!segments.length) return;
+      const latestEnd = d3.max(segments, d => d.end_time);
+      const minT = Math.max(0, latestEnd - windowSize);
+      angleScale.domain([minT, latestEnd]);
+    }
+
+    function updateSummary(seg) {
+      windowsProcessed += 1;
+      const dur = seg.end_time - seg.start_time;
+      const conf = seg.top_prob || 0;
+
+      if (speciesSeconds.hasOwnProperty(seg.top_label)) {
+        speciesSeconds[seg.top_label] += dur;
+        speciesWindows[seg.top_label] += 1;
+      }
+      if (typeof seg.peak_hz === "number" && seg.peak_hz > 0) {
+        speciesPeakFreqs[seg.top_label].push(seg.peak_hz);
+      }
+      meanConfWindow.push(conf);
+      if (meanConfWindow.length > 200) meanConfWindow.shift();
+
+      mWindowsEl.textContent = windowsProcessed.toString();
+      mTimeEl.textContent = `${seg.end_time.toFixed(1)} s`;
+      if (meanConfWindow.length) {
+        const avg = meanConfWindow.reduce((a, b) => a + b, 0) / meanConfWindow.length;
+        mConfEl.textContent = `${(avg * 100).toFixed(1)} %`;
+      } else {
+        mConfEl.textContent = "–";
+      }
+
+      // overall "typical" peak freq (median across all species)
+      let allPeaks = [];
+      Object.values(speciesPeakFreqs).forEach(arr => { allPeaks = allPeaks.concat(arr); });
+      if (allPeaks.length) {
+        allPeaks.sort((a, b) => a - b);
+        const mid = Math.floor(allPeaks.length / 2);
+        const med = allPeaks.length % 2 ? allPeaks[mid] : 0.5 * (allPeaks[mid - 1] + allPeaks[mid]);
+        mPeakEl.textContent = `${Math.round(med)} Hz`;
+      } else {
+        mPeakEl.textContent = "–";
+      }
+
+      const entries = Object.entries(speciesSeconds);
+      const total = entries.reduce((sum, [, s]) => sum + s, 0);
+      if (total > 0) {
+        const [topSpecies, topS] = entries.sort((a, b) => b[1] - a[1])[0];
+        const share = (topS / total) * 100;
+        const windowsOfTop = speciesWindows[topSpecies];
+
+        centralNow.text(seg.end_time.toFixed(1) + " s");
+        centralSpecies
+          .attr("fill", speciesColor(topSpecies))
+          .text(topSpecies);
+
+        storyEl.innerHTML =
+          `<span class="story-main">${topSpecies}</span> has been the most active caller so far, ` +
+          `contributing about <span class="mono">${share.toFixed(0)}%</span> of the frog chorus ` +
+          `across <span class="mono">${windowsOfTop}</span> prediction windows.`;
+      }
+    }
+
+    function renderSpeciesBars() {
+      const entries = speciesOrder.map(s => ({
+        species: s,
+        seconds: speciesSeconds[s],
+        color: speciesColor(s),
+        peaks: speciesPeakFreqs[s]
+      }));
+      const total = entries.reduce((sum, e) => sum + e.seconds, 0);
+      const maxSec = d3.max(entries, e => e.seconds) || 1;
+
+      speciesListEl.innerHTML = "";
+
+      entries.forEach(e => {
+        const item = document.createElement("div");
+        item.className = "species-item";
+
+        const swatch = document.createElement("span");
+        swatch.className = "species-swatch";
+        swatch.style.background = e.color;
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "species-name mono";
+        nameSpan.textContent = e.species;
+
+        const statsSpan = document.createElement("span");
+        statsSpan.className = "mono";
+        statsSpan.style.fontSize = "0.78rem";
+        if (total > 0) {
+          const pct = (e.seconds / total) * 100;
+          statsSpan.textContent = `${pct.toFixed(0)}% chorus`;
+        } else {
+          statsSpan.textContent = "–";
+        }
+
+        const bar = document.createElement("div");
+        bar.className = "species-bar";
+        const fill = document.createElement("div");
+        fill.className = "species-bar-fill";
+        fill.style.background = e.color;
+        fill.style.width = `${(e.seconds / maxSec) * 100}%`;
+        bar.appendChild(fill);
+
+        item.appendChild(swatch);
+        item.appendChild(nameSpan);
+        item.appendChild(statsSpan);
+        item.appendChild(bar);
+        speciesListEl.appendChild(item);
+      });
+    }
+
+    // ====== MAIN VIZ (ARCS + DOTS) ======
+    const arcLayer = gRoot.append("g").attr("class", "arcs");
+    const dotLayer = gRoot.append("g").attr("class", "dots");
+
+    function updateViz() {
+      if (!segments.length) return;
+
+      updateAngleScale();
+
+      const arcGen = d3.arc().cornerRadius(5);
+
+      const arcs = arcLayer.selectAll("path.arc-seg")
+        .data(segments, d => `${d.start_time}-${d.top_label}`);
+
+      arcs.join(
+        enter => enter.append("path")
+          .attr("class", "arc-seg")
+          .attr("fill", d => speciesColor(d.top_label))
+          .attr("fill-opacity", d => 0.35 + 0.5 * (d.top_prob || 0))
+          .attr("filter", "url(#glow)")
+          .attr("d", d => {
+            const r = speciesRadii[d.top_label];
+            const a0 = angleScale(d.start_time);
+            const a1 = angleScale(d.start_time);
+            return arcGen({
+              innerRadius: r.inner,
+              outerRadius: r.outer,
+              startAngle: a0,
+              endAngle: a1
+            });
+          })
+          .transition().duration(450)
+          .attrTween("d", function(d) {
+            const r = speciesRadii[d.top_label];
+            const start = angleScale(d.start_time);
+            const end = angleScale(d.end_time);
+            const iEnd = d3.interpolate(start, end);
+            return function(t) {
+              return arcGen({
+                innerRadius: r.inner,
+                outerRadius: r.outer,
+                startAngle: start,
+                endAngle: iEnd(t)
+              });
+            };
+          }),
+        update => update
+          .transition().duration(350)
+          .attr("d", d => {
+            const r = speciesRadii[d.top_label];
+            const a0 = angleScale(d.start_time);
+            const a1 = angleScale(d.end_time);
+            return arcGen({
+              innerRadius: r.inner,
+              outerRadius: r.outer,
+              startAngle: a0,
+              endAngle: a1
+            });
+          }),
+        exit => exit
+          .transition().duration(300)
+          .attr("fill-opacity", 0)
+          .remove()
+      );
+
+      const dotData = segments.map(d => {
+        const midT = 0.5 * (d.start_time + d.end_time);
+        const a = angleScale(midT);
+        const rBand = speciesRadii[d.top_label];
+        const rMid = 0.5 * (rBand.inner + rBand.outer);
+
+        const peak = typeof d.peak_hz === "number" ? d.peak_hz : 0;
+        const peakNorm = Math.min(peak / 6000, 1); // assume < 6kHz
+        const baseR = 3 + 5 * peakNorm;
+
+        return {
+          ...d,
+          cx: Math.cos(a) * rMid,
+          cy: Math.sin(a) * rMid,
+          rDot: baseR
+        };
+      });
+
+      const dots = dotLayer.selectAll("circle.dot")
+        .data(dotData, d => `${d.start_time}-${d.top_label}`);
+
+      dots.join(
+        enter => enter.append("circle")
+          .attr("class", "dot")
+          .attr("cx", d => d.cx)
+          .attr("cy", d => d.cy)
+          .attr("r", 0)
+          .attr("fill", d => speciesColor(d.top_label))
+          .attr("fill-opacity", 0)
+          .attr("filter", "url(#glow)")
+          .transition().duration(300)
+          .attr("r", d => d.rDot)
+          .attr("fill-opacity", d => 0.4 + 0.5 * (d.top_prob || 0))
+          .transition().duration(700)
+          .attr("r", d => d.rDot * 0.5)
+          .attr("fill-opacity", 0.1),
+        update => update
+          .transition().duration(300)
+          .attr("cx", d => d.cx)
+          .attr("cy", d => d.cy),
+        exit => exit
+          .transition().duration(250)
+          .attr("fill-opacity", 0)
+          .attr("r", 0)
+          .remove()
+      );
+
+      renderSpeciesBars();
+    }
+
+    // ====== WEBSOCKET HOOKUP ======
+    const ws = new WebSocket("ws://localhost:8000/ws/frogs");
+
+    ws.onopen = () => {
+      storyEl.innerHTML = `<span class="story-main">Listening for frog calls…</span>`;
+    };
+
+    ws.onmessage = event => {
+      const seg = JSON.parse(event.data);
+
+      // Start audio when first segment arrives
+      if (!audioStarted && audioEl) {
+        audioStarted = true;
+        try {
+          audioEl.currentTime = seg.start_time;
+        } catch (e) {}
+        audioEl.play().catch(() => {
+          // user may need to press play manually if autoplay is blocked
+        });
+      }
+
+      segments.push(seg);
+
+      const cutoff = seg.end_time - windowSize;
+      segments = segments.filter(d => d.end_time >= cutoff);
+
+      updateSummary(seg);
+      updateViz();
+    };
+
+    ws.onerror = () => {
+      storyEl.innerHTML = `<span class="story-main">WebSocket error – check that <span class="mono">server.py</span> is running.</span>`;
+    };
+
+    ws.onclose = () => {
+      storyEl.innerHTML = `<span class="story-main">Connection closed – restart <span class="mono">server.py</span> and refresh this page.</span>`;
+    };
+  </script>
+</body>
+</html>
